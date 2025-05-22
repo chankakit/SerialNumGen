@@ -18,11 +18,17 @@ defineProps<{
 <style scoped>
 .result-wrapper {
   width: 320px;
-  height: 640px;
+  height: calc(100vh - 96px);
   padding: var(--spacing-small);
-  overflow: scroll;
+  overflow: auto;
   border-radius: var(--border-radius);
   background-color: #2d2e30;
+  font-family: 'Ubuntu Mono','Courier New', monospace;
+  font-weight: 500;
+  letter-spacing: 0.8px;
+  /* 自定义滚动条 */
+  scrollbar-color: #4b4b4b #2d2e30;
+  scrollbar-width: thin;
 }
 
 @media (prefers-color-scheme: light) {

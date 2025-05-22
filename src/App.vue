@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import type { Field } from './types/field'
-import { padWithZeros, concatenateStrings, findLastNumberSegmentIndices } from './utils/string'
+import { padWithZeros, concatenateStrings } from './utils/string'
 import { generateCSV } from './utils/csv'
 import VariableField from './components/VariableField.vue'
 import SpaceDialog from './components/SpaceDialog.vue'
@@ -12,6 +12,30 @@ const resultString = ref('')
 
 const showSpaceDialog = ref(false)
 const pendingFields = ref<Field[]>([])
+
+const pageSettings = ref({
+  amountPerPage: 1,
+  pages: 1
+})
+
+const calculateLengthAndSetValue = () => {
+  const length = pageSettings.value.amountPerPage * pageSettings.value.pages
+  for (let i = 0; i < fields.value.length; i++) {
+    // 把所有的字段的每个part都设置为相同的长度
+    for (let j = 0; j < fields.value[i].valueParts.length; j++) {
+      if (!fields.value[i].valueParts[j].fixed) {
+        fields.value[i].valueParts[j].length = length
+        fields.value[i].valueParts[j].end = padWithZeros(Number(fields.value[i].valueParts[j].start) + length * fields.value[i].valueParts[j].step - 1, fields.value[i].valueParts[j].start.length)
+      }
+    }
+  }
+}
+
+
+const reverseSettings = ref({
+  amountPerGroup: 1,
+  reverseGroup: false
+})
 
 /**
  * 更新流水号个数
@@ -61,6 +85,48 @@ const setEndNumber = (field: Field) => {
   }
 }
 
+
+function chunkArray<T>(arr: T[], chunkSize: number): T[][] {
+  // 处理边界情况
+  if (chunkSize <= 0) {
+    throw new Error("chunkSize must be a positive integer");
+  }
+
+  const result: T[][] = [];
+  const length = arr.length;
+  
+  // 遍历数组，每次增加 chunkSize
+  for (let i = 0; i < length; i += chunkSize) {
+    // 获取当前块
+    const chunk = arr.slice(i, i + chunkSize);
+    
+    // 如果不足 chunkSize，则补空值
+    while (chunk.length < chunkSize) {
+      // 这里使用类型断言，因为我们知道补的是空字符串或默认值
+      // 实际上可能需要更复杂的处理来保持类型一致
+      chunk.push("" as unknown as T);
+    }
+    
+    result.push(chunk);
+  }
+  
+  return result;
+}
+
+/**
+ * 组反转,但组内是顺序的
+ * @param amountPerGroup 每组内元素数量
+ * @param originalArray 原数组
+ * @returns 反转后的新数组
+ */
+const reverseGroup = (amountPerGroup: number, originalArray: string[]) => {
+  let reversed = chunkArray(originalArray, amountPerGroup)
+  // 反转reversed数组
+  reversed.reverse()
+
+  return reversed.flat()
+}
+
 /**
  * 生成值列表
  * @param field 对应字段
@@ -78,6 +144,9 @@ const generateValuesList = (field: Field, length: number) => {
       }
     }
     field.valueList.push(concatenateStrings(res))
+  }
+  if (reverseSettings.value.reverseGroup) {
+    field.valueList = reverseGroup(reverseSettings.value.amountPerGroup, field.valueList)
   }
 }
 
@@ -195,25 +264,40 @@ const saveCSV = () => {
       </div>
     </header>
     <div class="flex space-between" style="padding: 0 24px;">
-
-      <div>
-        <h3>Variables Settings</h3>
-        <div v-for="(field, index) in fields" :key="index">
-          <VariableField :field="field" 
-            @update:field="(val) => handleFieldUpdate(index, val)"
-            @delete="handleFieldDelete(index)" />
+      <div class="flex-v">
+        <div>
+          <h3>Page Settings</h3>
+          <div class="flex-v gap-6">
+            <div class="flex gap-6">
+              <input type="number" placeholder="Amount Per Page" v-model="pageSettings.amountPerPage">
+              <input type="number" placeholder="Pages" v-model="pageSettings.pages">
+              <button @click="calculateLengthAndSetValue">Set length</button>
+            </div>
+            <div class="flex v-center gap-6">
+              <input type="number" placeholder="Amount Per Group" v-model="reverseSettings.amountPerGroup">
+              <input id="reverse-group-checkbox" type="checkbox" v-model="reverseSettings.reverseGroup">
+              <label for="reverse-group-checkbox">Reverse Group</label>
+            </div>
+          </div>
         </div>
-        <button class="highlight-btn" @click="fields.push({
-          name: 'var_sn' + (fields.length + 1),
-          valueParts: [{ start: '', end: '', step: 1, fixed: false, length: 0 }],
-          valueList: []
-        })">
-          + Add Variable
-        </button>
+        <div>
+          <h3>Variables Settings</h3>
+          <div v-for="(field, index) in fields" :key="index">
+            <VariableField :field="field" 
+              @update:field="(val) => handleFieldUpdate(index, val)"
+              @delete="handleFieldDelete(index)" />
+          </div>
+          <button class="highlight-btn" @click="fields.push({
+            name: 'var_sn' + (fields.length + 1),
+            valueParts: [{ start: '', end: '', step: 1, fixed: false, length: 0 }],
+            valueList: []
+          })">
+            + Add Variable
+          </button>
+        </div>
       </div>
       <ResultPanel :result-string="resultString" />
     </div>
-
     <!-- 检测到空格的对话框 -->
     <SpaceDialog 
       :visible="showSpaceDialog" 
@@ -235,15 +319,6 @@ header {
     font-size: 20px;
     font-weight: 700;
   }
-}
-
-.result-wrapper {
-  width: 320px;
-  height: 640px;
-  padding: var(--spacing-small);
-  overflow: scroll;
-  border-radius: var(--border-radius);
-  background-color: #2d2e30;
 }
 
 @media (prefers-color-scheme: light) {
